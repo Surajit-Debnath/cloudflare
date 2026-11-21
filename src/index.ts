@@ -1,23 +1,31 @@
 import { Hono } from "hono";
 type CloudflareBindings={
-  CACHE1:KVNamespace
+  suro:D1Database
 }
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
-app.get("/:username", async(c) =>{
-  const username=c.req.param("username");
-  const chachedResp= await c.env.CACHE1.get(username);
-  if(chachedResp){
-    return c.json(chachedResp);
-  }
-  const resp=await fetch(`https://api.github.com/users/${username}/repos`,{
-    headers:{
-      "User-Agent":"CF-Worker"
-    }
-  })
-  const data=await resp.json();
-  await c.env.CACHE1.put(username,JSON.stringify(data));
-  return c.json(data);
+
+app.get("/movies", async(c) =>{
+  const resp=await c.env.suro.prepare("select * from movies").all();
+  const movies=resp.results
+  return c.json(movies);
 });
 
+app.get("/favorites",async c=>{
+  const resp=await c.env.suro
+  .prepare("select * from movies order by rating desc limit 3")
+  .all();
+  const movies=resp.results;
+  return c.json(movies);
+})
+
+app.put("/movies/:id",async c=>{
+  const body=await c.req.json();
+  const resp=await c.env.suro
+  .prepare("update movies set rating =?1 where id =?2 returning *")
+  .bind(body.rating,c.req.param("id"))
+  .run();
+  const ok=resp.success;
+  return c.json({ok});
+})
 export default app;
